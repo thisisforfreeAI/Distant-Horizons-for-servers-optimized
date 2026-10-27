@@ -99,3 +99,9 @@ priorities, and eviction against a database built by DH's real migration scripts
   `.dhso-compacting` copies are always deleted.
 - Tests: `DhsoCompactorTest` (2 tests) on a real DH database: shrinks, keeps all
   rows, DH reopens it in WAL mode, second run is skipped; interrupted swap recovery.
+
+## Step 4: defaults sized for a 14 GB cap
+- `storage.globalBudgetGB` defaults to 14 (was 20) and `storage.dimensionBudgetGB`
+  to 12 (was 10), so a fresh install keeps all DH databases under 14 GB.
+  Cleanup starts at 90% (12.6 GB) and stops at 75% (10.5 GB).
+  Existing `DistantHorizonsServerOptimized.toml` files keep their values.
