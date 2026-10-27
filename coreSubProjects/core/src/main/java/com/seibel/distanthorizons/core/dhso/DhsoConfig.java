@@ -41,8 +41,8 @@ public class DhsoConfig
 
 	// storage //
 	public volatile boolean storageEnabled = true;
-	public volatile double globalBudgetGb = 20.0;
-	public volatile double dimensionBudgetGb = 10.0;
+	public volatile double globalBudgetGb = 14.0;
+	public volatile double dimensionBudgetGb = 12.0;
 	public volatile int cleanupStartPercent = 90;
 	public volatile int cleanupTargetPercent = 75;
 	public volatile double minimumFreeDiskGb = 10.0;

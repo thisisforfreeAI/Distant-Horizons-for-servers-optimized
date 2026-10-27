@@ -55,7 +55,7 @@ public class DhsoStorageTest
 		DhsoConfig defaults = DhsoConfig.loadOrCreate(folder);
 		File file = new File(folder, DhsoConfig.FILE_NAME);
 		Assert.assertTrue(file.exists());
-		Assert.assertEquals(20.0, defaults.globalBudgetGb, 0.0001);
+		Assert.assertEquals(14.0, defaults.globalBudgetGb, 0.0001);
 		Assert.assertTrue(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8).contains("globalBudgetGB"));
 
 		// contradicting and out of range values are corrected
