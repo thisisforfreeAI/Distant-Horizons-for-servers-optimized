@@ -40,6 +40,13 @@ public interface IMinecraftSharedWrapper extends IBindable
 	/** returns true if MC's server thread is running in an acceptable amount of time */
 	boolean isServerThreadHealthy();
 	
+	/** 
+	 * DHSO: the server's recent average milliseconds per tick,
+	 * or a negative number if it isn't available.
+	 * Unlike {@link #isServerThreadHealthy()} this is also available on dedicated servers.
+	 */
+	default double getRecentAverageTickMs() { return -1; }
+	
 	/** returns true if this MC version supports surface world generation */
 	boolean supportsSurfaceGeneration();
 	

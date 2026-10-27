@@ -180,6 +180,18 @@ public class CommandInitializer
 		}
 		
 		commandDispatcher.register(builder);
+		
+		// DHSO admin commands, same permission requirement as /dh
+		LiteralArgumentBuilder<CommandSourceStack> dhsoBuilder = new DhsoCommand().buildCommand()
+				.requires((source) ->
+				{
+					#if MC_VER <= MC_1_21_10
+					return source.hasPermission(REQUIRED_PERMISSION_LEVEL);
+					#else
+					return COMMAND_PERMISSION_CHECK.check(source.permissions());
+					#endif
+				});
+		commandDispatcher.register(dhsoBuilder);
 	}
 	#endif
 }

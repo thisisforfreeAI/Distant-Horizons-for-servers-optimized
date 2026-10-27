@@ -37,3 +37,49 @@ All changed code is marked with a `DHSO:` comment.
 
 ### Tests
 - `DhsoChunkyAccessorTest`, `DhsoShutdownTest` (6 tests, JUnit 4).
+
+## Step 3a: storage budgets, eviction, adaptive throttling, /dhso
+
+### New: `config/DistantHorizonsServerOptimized.toml`
+Created with commented defaults on first start (`DhsoConfig`). Values out of
+range are clamped and contradictions (e.g. target above start) are fixed, with
+a log warning for each. Separate from DH's own config so no keys conflict.
+
+### Storage budgets and eviction (`DhsoStorageManager`, `DhsoLodEvictor`)
+- Background daemon thread `DH-DHSO Storage`; never touches the server thread.
+- Every `checkIntervalSeconds` measures each dimension's *used* bytes
+  (`(page_count - freelist_count) * page_size`), file size, WAL size and free disk.
+- Over `cleanupStartPercent` of the dimension or global budget, it evicts down
+  to `cleanupTargetPercent`, largest database first for the global budget.
+- Only detail levels `<= maxEvictableDetailLevel` (default 1: full and half
+  detail) are evicted; coarser levels are kept so distant terrain stays visible.
+  DH merges each child into its parent incrementally, so a missing child does
+  not erase anything from its parent.
+- Sections with pending `ApplyToParent` / `ApplyToChildren` / `Regenerate`
+  work are never evicted (checked at selection and again in the DELETE).
+- Order: farthest from every online player and every player's last position
+  this session first; nothing within `protectedRadiusBlocks` is touched.
+  With no players seen, distance is measured from the world origin.
+- Matching `ChunkHash` rows are deleted in the same transaction so DH rebuilds
+  those sections when their chunks load again.
+- One transaction per batch (`batchSize`), 50 ms pause between batches,
+  passive WAL checkpoint afterwards, at most 20 s per automatic check.
+- Deleting frees pages inside the file for new LODs; it does not shrink the file.
+
+### Adaptive generation throttle (`DhsoGenerationController`)
+- States NORMAL / THROTTLED (half the world gen threads) / CRITICAL (paused) / SHUTDOWN.
+- Inputs: average MSPT, free disk below `minimumFreeDiskGB`, still over budget
+  after eviction, `/dhso pause`, server stopping.
+- Hysteresis: goes back to NORMAL only below `msptRecoverThreshold`.
+- Hooked into `ThreadPoolUtil.worldGenThreadsCanRun()`, which also gates DH's pregen.
+- `MinecraftServerWrapper.getRecentAverageTickMs()`: upstream's server-health
+  check returns "healthy" on dedicated servers because it only reads singleplayer
+  tick times, so `limitIfServerUnhealthy` never did anything on a dedicated server.
+  DHSO reads the dedicated server's tick times instead (upstream check unchanged).
+
+### `/dhso` commands (owner permission, same check as `/dh`)
+`status`, `storage`, `pause`, `resume`, `cleanup dryrun`, `cleanup run`.
+
+### Tests
+`DhsoStorageTest` (5 tests): config creation/validation, throttle hysteresis and
+priorities, and eviction against a database built by DH's real migration scripts.

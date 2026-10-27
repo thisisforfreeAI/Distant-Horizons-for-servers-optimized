@@ -75,7 +75,42 @@ public class MinecraftServerWrapper extends AbstractMinecraftSharedWrapper
 		#endif
 	}
 	
+	/** DHSO: used by the adaptive generation throttle */
 	@Override
+	public double getRecentAverageTickMs()
+	{
+		DedicatedServer server = this.dedicatedServer;
+		if (server == null)
+		{
+			return -1;
+		}
+		
+		#if MC_VER <= MC_1_20_2
+		// not implemented for older MC versions
+		return -1;
+		#else
+		long[] tickTimesNanos = server.getTickTimesNanos();
+		if (tickTimesNanos == null || tickTimesNanos.length == 0)
+		{
+			return -1;
+		}
+		
+		long totalNanos = 0;
+		int sampleCount = 0;
+		for (long tickTimeNanos : tickTimesNanos)
+		{
+			// unfilled slots are 0 right after startup
+			if (tickTimeNanos > 0)
+			{
+				totalNanos += tickTimeNanos;
+				sampleCount++;
+			}
+		}
+		return (sampleCount == 0) ? -1 : (totalNanos / (double) sampleCount) / 1_000_000.0;
+		#endif
+	}
+	
+		@Override
 	public int getPlayerCount() 
 	{
 		if (this.dedicatedServer == null)

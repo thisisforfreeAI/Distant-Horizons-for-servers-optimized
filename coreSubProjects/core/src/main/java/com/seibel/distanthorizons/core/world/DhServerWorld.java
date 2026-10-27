@@ -23,6 +23,8 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiLevelLo
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiLevelUnloadEvent;
 import com.seibel.distanthorizons.core.api.internal.ClientApi;
 import com.seibel.distanthorizons.core.enums.MinecraftTextFormat;
+import com.seibel.distanthorizons.core.dhso.DhsoConfig;
+import com.seibel.distanthorizons.core.dhso.DhsoStorageManager;
 import com.seibel.distanthorizons.core.generation.PregenManager;
 import com.seibel.distanthorizons.core.level.DhServerLevel;
 import com.seibel.distanthorizons.core.wrapperInterfaces.world.ILevelWrapper;
@@ -30,6 +32,7 @@ import com.seibel.distanthorizons.core.wrapperInterfaces.world.IServerLevelWrapp
 import com.seibel.distanthorizons.coreapi.DependencyInjection.ApiEventInjector;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.File;
 import java.util.concurrent.CompletableFuture;
 
 public class DhServerWorld extends AbstractDhServerWorld<DhServerLevel>
@@ -42,10 +45,17 @@ public class DhServerWorld extends AbstractDhServerWorld<DhServerLevel>
 	// constructors //
 	//==============//
 	
+	/** DHSO: keeps the LOD databases within their storage budgets and throttles generation */
+	private final DhsoStorageManager dhsoStorageManager;
+	
 	public DhServerWorld()
 	{
 		super(EWorldEnvironment.SERVER_ONLY);
 		LOGGER.info("Started ["+DhServerWorld.class.getSimpleName()+"] of type ["+this.environment+"].");
+		
+		// the dedicated server's working directory is the server folder
+		DhsoConfig dhsoConfig = DhsoConfig.loadOrCreate(new File("config"));
+		this.dhsoStorageManager = new DhsoStorageManager(dhsoConfig, this.dhLevelByLevelWrapper::values, this.getServerPlayerStateManager());
 	}
 	
 	
@@ -111,6 +121,9 @@ public class DhServerWorld extends AbstractDhServerWorld<DhServerLevel>
 	@Override
 	public void close()
 	{
+		// DHSO: stop eviction/measurement before the databases close
+		this.dhsoStorageManager.close();
+		
 		CompletableFuture<Void> runningPregen = this.pregenManager.getRunningPregen();
 		if (runningPregen != null)
 		{

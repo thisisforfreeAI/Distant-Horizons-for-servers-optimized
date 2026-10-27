@@ -22,6 +22,7 @@ package com.seibel.distanthorizons.core.util.threading;
 import com.seibel.distanthorizons.core.api.internal.ClientApi;
 import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dhso.DhsoShutdown;
+import com.seibel.distanthorizons.core.dhso.DhsoStorageManager;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.util.LodUtil;
 import com.seibel.distanthorizons.core.util.ThreadUtil;
@@ -191,6 +192,16 @@ public class ThreadPoolUtil
 		}
 		
 		if (chunkBuilderOverloaded())
+		{
+			return false;
+		}
+		
+		// DHSO: adaptive throttle (lag, low disk, storage budget, /dhso pause)
+		DhsoStorageManager dhsoStorageManager = DhsoStorageManager.getCurrent();
+		PriorityTaskPicker.Executor worldGenExecutor = getWorldGenExecutor();
+		if (dhsoStorageManager != null
+			&& worldGenExecutor != null
+			&& !dhsoStorageManager.controller.canStartGeneration(worldGenExecutor.getRunningTaskCount(), worldGenExecutor.getPoolSize()))
 		{
 			return false;
 		}
