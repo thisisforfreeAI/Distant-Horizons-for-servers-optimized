@@ -83,3 +83,19 @@ a log warning for each. Separate from DH's own config so no keys conflict.
 ### Tests
 `DhsoStorageTest` (5 tests): config creation/validation, throttle hysteresis and
 priorities, and eviction against a database built by DH's real migration scripts.
+
+## Step 3b: compaction of oversized databases
+
+- `/dhso compact` marks each loaded dimension's database (a
+  `DistantHorizons.sqlite.dhso-compact` file next to it).
+- On the next start, before DH opens a marked database, `DhsoCompactor` checkpoints
+  the WAL, runs `VACUUM INTO` a copy, verifies the copy with `PRAGMA quick_check`
+  and an equal `FullData` row count, sets WAL mode on it, then swaps it in by
+  renaming. The original is only read until the verified copy is ready.
+- Skipped (nothing changed) when under 10% of the file is free or free disk is
+  below ~1.1x the kept data + 512 MB. One attempt per request.
+- Crash recovery: a leftover `.dhso-old` with no database is renamed back; a
+  leftover `.dhso-old` next to a database is the finished case and is deleted;
+  `.dhso-compacting` copies are always deleted.
+- Tests: `DhsoCompactorTest` (2 tests) on a real DH database: shrinks, keeps all
+  rows, DH reopens it in WAL mode, second run is skipped; interrupted swap recovery.

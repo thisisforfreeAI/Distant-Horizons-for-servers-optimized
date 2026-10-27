@@ -496,6 +496,45 @@ public class DhsoStorageManager implements AutoCloseable
 		return future;
 	}
 
+	/**
+	 * Marks every loaded level's database for compaction on the next start. <br>
+	 * Compaction can't run while DH has the database open.
+	 */
+	public String requestCompaction()
+	{
+		StringBuilder builder = new StringBuilder();
+		long totalFreeInsideFiles = 0;
+		for (AbstractDhServerLevel level : this.levelSupplier.get())
+		{
+			FullDataSourceV2Repo repo = level.getFullDataProvider().repo;
+			String levelName = getLevelName(level);
+			try
+			{
+				DhsoCompactor.requestCompaction(repo.databaseFile);
+				LevelStats stats = this.lastStats.get(levelName);
+				if (stats != null)
+				{
+					long reclaimable = Math.max(0, stats.fileBytes - stats.usedBytes);
+					totalFreeInsideFiles += reclaimable;
+					builder.append(levelName).append(": about ").append(formatGb(reclaimable)).append(" can be reclaimed, the copy needs about ")
+							.append(formatGb(stats.usedBytes)).append(" free disk\n");
+				}
+				else
+				{
+					builder.append(levelName).append(": marked\n");
+				}
+			}
+			catch (Exception e)
+			{
+				this.recordError("compaction request", e);
+				builder.append(levelName).append(": failed to mark, ").append(e.getMessage()).append("\n");
+			}
+		}
+		LOGGER.info("[DHSO] Compaction requested for the next start, about " + formatGb(totalFreeInsideFiles) + " reclaimable.");
+		builder.append("Compaction runs on the next server start, before players can join, and can take several minutes. Databases with under 10% free space are skipped.");
+		return builder.toString();
+	}
+
 	public String getStatusString()
 	{
 		StringBuilder builder = new StringBuilder();

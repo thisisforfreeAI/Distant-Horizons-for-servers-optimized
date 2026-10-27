@@ -54,6 +54,7 @@ public class DhsoCommand extends AbstractDhCommand
 					manager.controller.setManuallyPaused(false);
 					return this.sendSuccessResponse(c, "DH world generation resumed (subject to lag, disk and storage limits, see /dhso status).", true);
 				})))
+				.then(literal("compact").executes(c -> this.withManager(c, manager -> this.sendSuccessResponse(c, manager.requestCompaction(), true))))
 				.then(literal("cleanup")
 						.then(literal("dryrun").executes(c -> this.runCleanup(c, true)))
 						.then(literal("run").executes(c -> this.runCleanup(c, false))));
@@ -105,6 +106,7 @@ public class DhsoCommand extends AbstractDhCommand
 				+ "§e/dhso pause§r / §e/dhso resume§r - Pause or resume DH world generation.\n"
 				+ "§e/dhso cleanup dryrun§r - Estimate what a cleanup would evict, deletes nothing.\n"
 				+ "§e/dhso cleanup run§r - Evict rebuildable LOD data down to the cleanup target now.\n"
+				+ "§e/dhso compact§r - Shrink the database files on the next restart (run a cleanup first).\n"
 				+ "Settings: config/DistantHorizonsServerOptimized.toml (restart to apply).";
 	}
 

@@ -25,6 +25,7 @@ import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.fullData.sources.FullDataSourceV2;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
+import com.seibel.distanthorizons.core.dhso.DhsoCompactor;
 import com.seibel.distanthorizons.core.file.fullDatafile.IDataSourceUpdateListenerFunc;
 import com.seibel.distanthorizons.core.file.structure.ISaveStructure;
 import com.seibel.distanthorizons.core.generation.tasks.DataSourceRetrievalResult;
@@ -110,7 +111,10 @@ public class FullDataSourceProviderV2 implements IDebugRenderable, AutoCloseable
 	public FullDataSourceProviderV2(IDhLevel level, ISaveStructure saveStructure, @Nullable File saveDirOverride) throws SQLException, IOException
 	{
 		this.saveDir = (saveDirOverride == null) ? saveStructure.getSaveFolder(level.getLevelWrapper()) : saveDirOverride;
-		this.repo = new FullDataSourceV2Repo(AbstractDhRepo.DEFAULT_DATABASE_TYPE, new File(this.saveDir.getPath() + File.separator + ISaveStructure.DATABASE_NAME));
+		File databaseFile = new File(this.saveDir.getPath() + File.separator + ISaveStructure.DATABASE_NAME);
+		// DHSO: only does something after /dhso compact, must run before the database is opened
+		DhsoCompactor.compactIfRequested(databaseFile);
+		this.repo = new FullDataSourceV2Repo(AbstractDhRepo.DEFAULT_DATABASE_TYPE, databaseFile);
 		this.level = level;
 		this.levelWrapper = level.getLevelWrapper();
 		
