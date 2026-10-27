@@ -587,6 +587,17 @@ public abstract class AbstractDhRepo<TKey, TDTO extends IBaseDTO<TKey>> implemen
 	{
 		this.repoClosedRef.set(true);
 		
+		// DHSO: wait once for any last queries to finish,
+		// upstream waited up to 1 second for every open connection (one per thread that used this repo)
+		int waitCount = 0;
+		while (this.openClosables.size() != 0
+			// wait up to 1 second for in-progress queries to finish (hopefully they'll finish in much less time then that)
+			&& waitCount < 10)
+		{
+			waitCount++;
+			try { Thread.sleep(100); } catch (Exception ignore) { }
+		}
+		
 		try
 		{
 			// close this repo's connections
@@ -599,17 +610,6 @@ public abstract class AbstractDhRepo<TKey, TDTO extends IBaseDTO<TKey>> implemen
 				{
 					// shouldn't happen, but just in case
 					continue;
-				}
-				
-				
-				// wait a few moments for any last queries to finish
-				int waitCount = 0;
-				while (this.openClosables.size() != 0
-					// wait up to 1 second for in-progress queries to finish (hopefully they'll finish in much less time then that)
-					&& waitCount < 10)
-				{
-					waitCount++;
-					try { Thread.sleep(100); } catch (Exception ignore) { }
 				}
 				
 				

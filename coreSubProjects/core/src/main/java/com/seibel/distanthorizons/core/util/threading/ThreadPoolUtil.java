@@ -21,6 +21,7 @@ package com.seibel.distanthorizons.core.util.threading;
 
 import com.seibel.distanthorizons.core.api.internal.ClientApi;
 import com.seibel.distanthorizons.core.config.Config;
+import com.seibel.distanthorizons.core.dhso.DhsoShutdown;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.util.LodUtil;
 import com.seibel.distanthorizons.core.util.ThreadUtil;
@@ -140,7 +141,9 @@ public class ThreadPoolUtil
 		{
 			fullDataMigrationThreadPool.shutdown();
 		}
-		fullDataMigrationThreadPool = ThreadUtil.makeSingleThreadPool(FULL_DATA_MIGRATION_THREAD_NAME);
+		// DHSO: daemon so an in-progress migration can't keep the JVM alive after the server stops,
+		// the migrator stops itself between batches when its level closes
+		fullDataMigrationThreadPool = ThreadUtil.makeSingleDaemonThreadPool(FULL_DATA_MIGRATION_THREAD_NAME);
 		
 	}
 	
@@ -176,6 +179,12 @@ public class ThreadPoolUtil
 	 */
 	public static boolean worldGenThreadsCanRun()
 	{
+		// DHSO: don't start new generation/propagation work once the server is stopping
+		if (DhsoShutdown.isShuttingDown())
+		{
+			return false;
+		}
+		
 		if (cameraMovingFast())
 		{
 			return false;
@@ -197,6 +206,12 @@ public class ThreadPoolUtil
 	
 	public static boolean updatePropagatorThreadsCanRun()
 	{
+		// DHSO: don't start new generation/propagation work once the server is stopping
+		if (DhsoShutdown.isShuttingDown())
+		{
+			return false;
+		}
+		
 		if (cameraMovingFast())
 		{
 			return false;

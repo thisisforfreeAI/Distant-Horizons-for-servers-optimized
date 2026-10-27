@@ -208,6 +208,8 @@ public class PriorityTaskPicker
 		}
 		
 		// since they're all already shutting down concurrently, this is bounded by the slowest one
+		// DHSO: one shared 5 second deadline, upstream waited up to 5 seconds per stuck executor
+		long deadlineMs = System.currentTimeMillis() + 5_000L;
 		try
 		{
 			for (int i = 0; i < this.executors.size(); i++)
@@ -215,8 +217,10 @@ public class PriorityTaskPicker
 				Executor executor = this.executors.get(i);
 				if (executor != null)
 				{
-					if (!executor.awaitTermination(5, TimeUnit.SECONDS))
+					long remainingMs = Math.max(1L, deadlineMs - System.currentTimeMillis());
+					if (!executor.awaitTermination(remainingMs, TimeUnit.MILLISECONDS))
 					{
+						LOGGER.warn("[DHSO] Executor [" + executor.name + "] didn't stop in time, interrupting it. Running tasks: [" + executor.getRunningTaskCount() + "], queued: [" + executor.getQueueSize() + "].");
 						executor.shutdownNow();
 					}
 				}

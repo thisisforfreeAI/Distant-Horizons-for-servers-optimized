@@ -69,17 +69,77 @@ public abstract class AbstractChunkyAccessor implements IChunkyAccessor
 	public boolean isRunning() { return this.chunkyRunningRef.get(); }
 	
 	
-	private boolean listenerBound = false;
+	/**
+	 * DHSO: how long to wait between attempts to bind to Chunky
+	 * if Chunky hasn't finished starting yet.
+	 */
+	private static final long BIND_RETRY_INTERVAL_MS = 5_000L;
+
+	/** set once the listener is bound, or once binding failed for a reason retrying won't fix */
+	private final AtomicBoolean setupFinishedRef = new AtomicBoolean(false);
+	private final AtomicBoolean bindInProgressRef = new AtomicBoolean(false);
+	private final AtomicLong lastBindAttemptMsRef = new AtomicLong(0L);
+	private int failedBindAttemptCount = 0;
+	
+	/** overridable so tests don't have to wait 5 seconds between attempts */
+	protected long getBindRetryIntervalMs() { return BIND_RETRY_INTERVAL_MS; }
+	/** @return true once DH is listening to Chunky's events, or has given up after an unexpected error */
+	public boolean isSetupFinished() { return this.setupFinishedRef.get(); }
+
+	/**
+	 * DHSO: this is called on every chunk load, which can happen before Chunky
+	 * has finished its own startup. In that case Chunky throws
+	 * "IllegalStateException: Chunky is not loaded". Upstream marked the listener as bound
+	 * before trying, so a single early failure meant DH never learned when Chunky was running.
+	 * Now the bind is only marked done once it succeeds, retries are rate limited,
+	 * and a failure never propagates into the chunk load that triggered it.
+	 */
 	@Override
 	public void tryRunFirstTimeSetup()
 	{
-		if (this.listenerBound)
+		if (this.setupFinishedRef.get())
 		{
 			return;
 		}
-		this.listenerBound = true;
-		
-		this.bindOnGenerationProgressEvent();
+
+		long nowMs = System.currentTimeMillis();
+		if (nowMs - this.lastBindAttemptMsRef.get() < this.getBindRetryIntervalMs())
+		{
+			return;
+		}
+
+		// only one thread should attempt the bind at a time
+		if (!this.bindInProgressRef.compareAndSet(false, true))
+		{
+			return;
+		}
+
+		try
+		{
+			this.lastBindAttemptMsRef.set(nowMs);
+			this.bindOnGenerationProgressEvent();
+			this.setupFinishedRef.set(true);
+			LOGGER.info("Bound to Chunky generation events" + (this.failedBindAttemptCount != 0 ? " after [" + this.failedBindAttemptCount + "] attempt(s) while Chunky was still starting." : "."));
+		}
+		catch (IllegalStateException e)
+		{
+			// Chunky isn't loaded/started yet, try again later
+			this.failedBindAttemptCount++;
+			if (this.failedBindAttemptCount == 1)
+			{
+				LOGGER.info("Chunky isn't ready yet [" + e.getMessage() + "], DH will retry binding to Chunky every [" + this.getBindRetryIntervalMs() + "]ms.");
+			}
+		}
+		catch (Throwable e)
+		{
+			// anything else is unexpected, report it once and stop trying so chunk loading isn't affected
+			this.setupFinishedRef.set(true);
+			LOGGER.error("Unable to bind to Chunky generation events, DH won't pause its world generator while Chunky is running. Error: [" + e.getMessage() + "].", e);
+		}
+		finally
+		{
+			this.bindInProgressRef.set(false);
+		}
 	}
 	
 	/** 

@@ -19,6 +19,7 @@
 
 package com.seibel.distanthorizons.core.api.internal;
 
+import com.seibel.distanthorizons.core.dhso.DhsoShutdown;
 import com.seibel.distanthorizons.core.network.messages.AbstractNetworkMessage;
 import com.seibel.distanthorizons.core.network.messages.MessageRegistry;
 import com.seibel.distanthorizons.core.world.*;
@@ -57,6 +58,7 @@ public class ServerApi
 	public void serverLoadEvent(boolean isDedicatedEnvironment)
 	{
 		LOGGER.debug("Server World loading with (dedicated?:" + isDedicatedEnvironment + ")");
+		DhsoShutdown.clearShuttingDown();
 		SharedApi.setDhWorld(isDedicatedEnvironment ? new DhServerWorld() : new DhClientServerWorld());
 	}
 	
@@ -64,12 +66,26 @@ public class ServerApi
 	{
 		LOGGER.debug("Server World " + SharedApi.getAbstractDhWorld() + " unloading");
 		
+		// DHSO: signal shutdown first so background work stops taking new jobs
+		DhsoShutdown.markShuttingDown();
+		long startMs = System.currentTimeMillis();
+		
 		// shutdown the world if it isn't already
 		AbstractDhWorld dhWorld = SharedApi.getAbstractDhWorld();
 		if (dhWorld != null)
 		{
-			dhWorld.close();
+			// DHSO: setDhWorld(null) closes the current world,
+			// upstream also called dhWorld.close() first, closing every level twice
 			SharedApi.setDhWorld(null);
+		}
+		
+		LOGGER.info("[DHSO] DH server shutdown finished in [" + (System.currentTimeMillis() - startMs) + "]ms, Minecraft's world save will run next.");
+		
+		int remainingThreadCount = DhsoShutdown.countNonDaemonDhThreads();
+		if (remainingThreadCount != 0)
+		{
+			LOGGER.warn("[DHSO] [" + remainingThreadCount + "] non-daemon DH thread(s) still alive after shutdown, these may delay the JVM exiting.");
+			DhsoShutdown.logDhThreadDump("threads alive after DH shutdown");
 		}
 	}
 	

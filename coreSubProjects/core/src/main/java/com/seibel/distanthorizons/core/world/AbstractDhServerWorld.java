@@ -1,6 +1,7 @@
 package com.seibel.distanthorizons.core.world;
 
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiLevelUnloadEvent;
+import com.seibel.distanthorizons.core.dhso.DhsoShutdown;
 import com.seibel.distanthorizons.core.file.structure.LocalSaveStructure;
 import com.seibel.distanthorizons.core.level.AbstractDhServerLevel;
 import com.seibel.distanthorizons.core.level.IDhLevel;
@@ -138,6 +139,8 @@ public abstract class AbstractDhServerWorld<TDhServerLevel extends AbstractDhSer
 		
 		// async level shutdown since level databases can take a moment
 		ArrayList<CompletableFuture<Void>> closeFutures = new ArrayList<>();
+		ArrayList<String> closeLevelNames = new ArrayList<>();
+		long closeStartMs = System.currentTimeMillis();
 		for (TDhServerLevel level : this.dhLevelByLevelWrapper.values())
 		{
 			// level wrapper shouldn't be null, but just in case
@@ -152,19 +155,43 @@ public abstract class AbstractDhServerWorld<TDhServerLevel extends AbstractDhSer
 			// close levels asynchronously to speed up
 			// shutdown on servers with a lot of levels
 			CompletableFuture<Void> closeFuture = new CompletableFuture<>();
+			String levelName = String.valueOf(serverLevelWrapper != null ? serverLevelWrapper.getDhIdentifier() : level);
 			Thread closeThread = new Thread(() ->
 			{
-				level.close();
-				closeFuture.complete(null);
-			}, "level shutdown");
+				try
+				{
+					level.close();
+					closeFuture.complete(null);
+				}
+				catch (Throwable e)
+				{
+					LOGGER.error("[DHSO] Error closing DH level [" + levelName + "]: [" + e.getMessage() + "].", e);
+					closeFuture.completeExceptionally(e);
+				}
+			}, DhsoShutdown.LEVEL_SHUTDOWN_THREAD_NAME + " [" + levelName + "]");
+			// DHSO: daemon so a stuck close can never keep the JVM alive after the server stops
+			closeThread.setDaemon(true);
 			closeThread.start();
 			closeFutures.add(closeFuture);
+			closeLevelNames.add(levelName);
 		}
 		
-		// wait for all the levels to finish closing
-		for (CompletableFuture<Void> future : closeFutures)
+		// DHSO: wait for the levels to finish closing, but not forever.
+		// This runs on the server thread before Minecraft's final world save,
+		// so an unbounded wait here would block that save.
+		ArrayList<String> unfinishedLevelNames = DhsoShutdown.awaitAll(closeFutures, closeLevelNames, closeStartMs + (DhsoShutdown.SHUTDOWN_TIMEOUT_SECONDS * 1_000L));
+		
+		long closeDurationMs = System.currentTimeMillis() - closeStartMs;
+		if (unfinishedLevelNames.isEmpty())
 		{
-			future.join();
+			LOGGER.info("[DHSO] Closed [" + closeFutures.size() + "] DH level(s) in [" + closeDurationMs + "]ms.");
+		}
+		else
+		{
+			LOGGER.error("[DHSO] [" + unfinishedLevelNames.size() + "] DH level(s) didn't finish closing within [" + DhsoShutdown.SHUTDOWN_TIMEOUT_SECONDS + "] seconds: " + unfinishedLevelNames + ". "
+					+ "Continuing the server shutdown so the world save isn't blocked. Their database writes may not have finished; "
+					+ "the LOD cache can be regenerated, but please report this with the thread dump below.");
+			DhsoShutdown.logDhThreadDump("level close timeout");
 		}
 		
 		this.dhLevelByLevelWrapper.clear();

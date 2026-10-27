@@ -96,7 +96,8 @@ public class DataMigratorV1 implements AutoCloseable
 		try
 		{
 			LOGGER.debug("Attempting to migrate data sources for: [" + this.levelId + "]-[" + this.saveDir + "]...");
-			this.migrationThreadRunning.set(true);
+			// DHSO: not re-set to true here (it starts as true),
+			// otherwise a level closed before this task started would migrate anyway
 			
 			
 			
@@ -119,7 +120,7 @@ public class DataMigratorV1 implements AutoCloseable
 				this.legacyDeletionCount = totalDeleteCount;
 				
 				ArrayList<String> unusedDataPosList = this.v1DataSourceProvider.repo.getUnusedDataSourcePositionStringList(50);
-				while (unusedDataPosList.size() != 0)
+				while (unusedDataPosList.size() != 0 && this.migrationThreadRunning.get())
 				{
 					unusedCount += unusedDataPosList.size();
 					this.legacyDeletionCount -= unusedDataPosList.size();
@@ -148,7 +149,14 @@ public class DataMigratorV1 implements AutoCloseable
 					{
 					}
 				}
-				LOGGER.info("Done deleting [" + this.levelId + "] - [" + totalDeleteCount + "] unused data sources.");
+				if (this.migrationThreadRunning.get())
+				{
+					LOGGER.info("Done deleting [" + this.levelId + "] - [" + totalDeleteCount + "] unused data sources.");
+				}
+				else
+				{
+					LOGGER.info("Stopped deleting [" + this.levelId + "] unused data sources after [" + unusedCount + "/" + totalDeleteCount + "] because the level is closing, the rest will be deleted next time.");
+				}
 				
 			}
 			
@@ -157,6 +165,12 @@ public class DataMigratorV1 implements AutoCloseable
 			//===========//
 			// migration //
 			//===========//
+			
+			// DHSO: don't start migrating if the level closed during deletion
+			if (!this.migrationThreadRunning.get())
+			{
+				return;
+			}
 			
 			long totalMigrationCount = this.v1DataSourceProvider.getDataSourceMigrationCount();
 			this.migrationCount = totalMigrationCount;
@@ -334,6 +348,11 @@ public class DataMigratorV1 implements AutoCloseable
 	public void close()
 	{
 		//LOGGER.info("Closing [" + this.getClass().getSimpleName() + "] for level: [" + this.levelId + "].");
+		
+		// DHSO: upstream never cleared this flag, so a running migration
+		// kept going after its level (and database) was closed.
+		// The loops check it between batches, so the current batch finishes cleanly.
+		this.migrationThreadRunning.set(false);
 	}
 	
 	
